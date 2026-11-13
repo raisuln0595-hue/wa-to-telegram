@@ -1,12 +1,31 @@
 const { default: makeWASocket, useMultiFileAuthState, downloadMediaMessage, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const axios = require('axios');
 const FormData = require('form-data');
 
 const TELEGRAM_BOT_TOKEN = '9125543698:AAE6DE7PPNKhUE6Eg0bw1bi5-KPfsVGEQ4A';
 const TELEGRAM_CHAT_ID = '7512451863';
 
+// QR কোড ইমেজ বানিয়ে টেলিগ্রামে পাঠানোর ফাংশন
+async function sendQRToTelegram(qrString) {
+    try {
+        const buffer = await QRCode.toBuffer(qrString);
+        const form = new FormData();
+        form.append('chat_id', TELEGRAM_CHAT_ID);
+        form.append('photo', buffer, { filename: 'qrcode.png' });
+        form.append('caption', '📱 WhatsApp QR কোড চলে এসেছে! দ্রুত আপনার ফোন দিয়ে এটি স্ক্যান করুন।');
+
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
+            headers: form.getHeaders()
+        });
+        console.log('✅ QR কোড টেলিগ্রামে সফলভাবে পাঠানো হয়েছে!');
+    } catch (error) {
+        console.error('❌ টেলিগ্রামে QR পাঠাতে সমস্যা হয়েছে:', error.response ? error.response.data : error.message);
+    }
+}
+
+// ফাইল টেলিগ্রামে পাঠানোর ফাংশন
 async function sendToTelegram(buffer, fileName, caption) {
     try {
         const form = new FormData();
@@ -21,7 +40,7 @@ async function sendToTelegram(buffer, fileName, caption) {
         });
         console.log(`✅ ফাইল টেলিগ্রামে পাঠানো হয়েছে: ${fileName}`);
     } catch (error) {
-        console.error('❌ টেলিগ্রামে পাঠাতে সমস্যা হয়েছে:', error.response ? error.response.data : error.message);
+        console.error('❌ টেলিগ্রামে ফাইল পাঠাতে সমস্যা হয়েছে:', error.response ? error.response.data : error.message);
     }
 }
 
@@ -31,16 +50,16 @@ async function connectToWhatsApp() {
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true
+        printQRInTerminal: false
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            console.log('নিচের QR কোডটি আপনার WhatsApp দিয়ে স্ক্যান করুন:');
-            qrcode.generate(qr, { small: true });
+            console.log('নতুন QR কোড জেনারেট হয়েছে, টেলিগ্রামে পাঠানো হচ্ছে...');
+            await sendQRToTelegram(qr);
         }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
