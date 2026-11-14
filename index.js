@@ -77,14 +77,15 @@ async function connectToWhatsApp() {
             if (msg.key.fromMe || !msg.message) continue;
 
             const messageContent = msg.message.ephemeralMessage?.message || msg.message.viewOnceMessage?.message || msg.message;
-            const messageType = Object.keys(messageContent)[0];
-
+            
+            // সঠিক উপায়ে মিডিয়া টাইপ সনাক্ত করা
             const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
+            const messageType = mediaTypes.find(type => messageContent && messageContent[type]);
 
-            if (mediaTypes.includes(mediaType)) {
+            if (messageType) {
                 try {
                     const sender = msg.pushName || msg.key.remoteJid.split('@')[0];
-                    const mediaObj = messageContent[mediaType];
+                    const mediaObj = messageContent[messageType];
                     
                     let fileName = mediaObj.fileName;
                     if (!fileName) {
