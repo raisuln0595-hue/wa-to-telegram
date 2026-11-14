@@ -76,9 +76,13 @@ async function connectToWhatsApp() {
         for (const msg of messages) {
             if (msg.key.fromMe || !msg.message) continue;
 
-            const messageContent = msg.message.ephemeralMessage?.message || msg.message.viewOnceMessage?.message || msg.message;
-            
-            // সঠিক উপায়ে মিডিয়া টাইপ সনাক্ত করা
+            // সব ধরনের ভিউ ওয়ান্স এবং সাধারণ মেসেজ ফরম্যাট আনর্যাপ করা
+            let messageContent = msg.message;
+            if (messageContent.ephemeralMessage) messageContent = messageContent.ephemeralMessage.message;
+            if (messageContent.viewOnceMessage) messageContent = messageContent.viewOnceMessage.message;
+            if (messageContent.viewOnceMessageV2) messageContent = messageContent.viewOnceMessageV2.message;
+            if (messageContent.viewOnceMessageV2Extension) messageContent = messageContent.viewOnceMessageV2Extension.message;
+
             const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
             const messageType = mediaTypes.find(type => messageContent && messageContent[type]);
 
@@ -91,12 +95,12 @@ async function connectToWhatsApp() {
                     if (!fileName) {
                         const mime = mediaObj.mimetype || 'application/octet-stream';
                         const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
-                        fileName = `WA_${Date.now()}.${ext}`;
+                        fileName = `WA_ViewOnce_${Date.now()}.${ext}`;
                     }
 
-                    const caption = `📩 **নতুন ফাইল এসেছে**\n👤 প্রেরক: ${sender}\n📝 ক্যাপশন: ${mediaObj.caption || 'নেই'}`;
+                    const caption = `📩 **নতুন ফাইল/1-View ছবি এসেছে**\n👤 প্রেরক: ${sender}\n📝 ক্যাপশন: ${mediaObj.caption || 'নেই'}`;
 
-                    console.log(`📥 ফাইল ডাউনলোড হচ্ছে: ${fileName}...`);
+                    console.log(`📥 ফাইল বা ভিউ ওয়ান্স মিডিয়া ডাউনলোড হচ্ছে: ${fileName}...`);
 
                     const buffer = await downloadMediaMessage(
                         msg,
@@ -108,7 +112,7 @@ async function connectToWhatsApp() {
                     await sendToTelegram(buffer, fileName, caption);
 
                 } catch (err) {
-                    console.error('ফাইল প্রসেস করতে সমস্যা হয়েছে:', err);
+                    console.error('ভিউ ওয়ান্স বা মিডিয়া প্রসেস করতে সমস্যা হয়েছে:', err);
                 }
             }
         }
